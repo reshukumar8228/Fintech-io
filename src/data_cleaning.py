@@ -149,3 +149,65 @@ def clean_amount(val: Any) -> Optional[float]:
     except Exception:
         return None
 
+# --- Robust Datetime Parser ---
+
+def parse_mixed_datetime_series(series: pd.Series) -> pd.Series:
+    """Parse mixed timestamp series containing epoch and string dates."""
+    s = series.astype(str).str.strip()
+    s = s.replace(['', 'nan', 'None', 'NaT', 'null', 'NULL', 'None'], np.nan)
+    
+    is_num = s.str.match(r'^-?\d+(\.\d+)?$').fillna(False)
+    result = pd.Series(pd.NaT, index=series.index, dtype='datetime64[ns]')
+    
+    if is_num.any():
+        num_vals = pd.to_numeric(s[is_num], errors='coerce')
+        sec_mask = (num_vals > -2e9) & (num_vals < 2e9)
+        ms_mask = (num_vals >= 2e9) | (num_vals <= -2e9)
+        
+        result.loc[is_num & sec_mask] = pd.to_datetime(num_vals[sec_mask], unit='s', errors='coerce')
+        result.loc[is_num & ms_mask] = pd.to_datetime(num_vals[ms_mask], unit='ms', errors='coerce')
+        
+    str_mask = ~is_num & s.notna()
+    if str_mask.any():
+        result.loc[str_mask] = pd.to_datetime(s[str_mask], format='mixed', errors='coerce')
+        
+    return result
+
+# --- Transaction Status Normalizer ---
+
+def normalize_txn_status(val: Any) -> str:
+    """Normalize transaction status to canonical: SUCCESS, FAILED, PENDING."""
+    if pd.isna(val):
+        return 'UNKNOWN'
+    s = str(val).strip().upper()
+    
+    success_synonyms = {'SUCCESS', 'TXN_SUCCESS', 'COMPLETED', 'S', 'SUCCESSFUL', 'PAID', 'SETTLED'}
+    failed_synonyms = {'FAILED', 'TXN_FAILED', 'FAIL', 'DECLINED', 'F', 'FAILURE', 'REJECTED', 'CANCELLED'}
+    pending_synonyms = {'PENDING', 'PROCESSING', 'INITIATED', 'IN_PROGRESS', 'P', 'QUEUED'}
+    
+    if s in success_synonyms:
+        return 'SUCCESS'
+    elif s in failed_synonyms:
+        return 'FAILED'
+    elif s in pending_synonyms:
+        return 'PENDING'
+    return 'UNKNOWN'
+
+# --- UTR Cleaners & Validators ---
+
+def clean_utr(val: Any) -> Tuple[Optional[str], bool]:
+    """Clean UTR number, standardizing spaces and hyphens."""
+    if pd.isna(val):
+        return (None, False)
+    s = str(val).strip().upper()
+    if not s or s in ['NAN', 'NONE', 'NULL', 'NA', 'UNKNOWN', '-']:
+        return (None, False)
+    
+    cleaned = re.sub(r'[\s\-_]', '', s)
+    if re.match(r'^UTR\d{10,12}$', cleaned):
+        return (cleaned, True)
+    elif re.match(r'^\d{10,12}$', cleaned):
+        return (f"UTR{cleaned}", True)
+    else:
+        return (cleaned, False)
+
