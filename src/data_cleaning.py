@@ -211,3 +211,221 @@ def clean_utr(val: Any) -> Tuple[Optional[str], bool]:
     else:
         return (cleaned, False)
 
+# --- KYC Fields Cleaners ---
+
+def clean_pan(val: Any) -> Tuple[Optional[str], bool]:
+    """Clean and validate Indian PAN numbers."""
+    if pd.isna(val):
+        return (None, False)
+    s = str(val).strip().upper()
+    s = re.sub(r'[\s\-_]', '', s)
+    if not s or s in ['NAN', 'NONE', 'NULL', 'NA']:
+        return (None, False)
+    
+    if re.match(r'^[A-Z]{5}\d{4}[A-Z]$', s):
+        return (s, True)
+    return (s, False)
+
+def clean_aadhaar(val: Any) -> Tuple[Optional[str], bool]:
+    """Clean and validate Aadhaar numbers."""
+    if pd.isna(val):
+        return (None, False)
+    s = str(val).strip().upper()
+    s = re.sub(r'[\s]', '', s)
+    if not s or s in ['NAN', 'NONE', 'NULL', 'NA']:
+        return (None, False)
+    
+    if re.match(r'^X{4}-?X{4}-?\d{4}$', s):
+        digits = s[-4:]
+        return (f"XXXX-XXXX-{digits}", True)
+    
+    digits_only = re.sub(r'\D', '', s)
+    if len(digits_only) == 12:
+        return (f"{digits_only[:4]}-{digits_only[4:8]}-{digits_only[8:]}", True)
+    elif len(digits_only) == 13:
+        return (f"{digits_only[:4]}-{digits_only[4:8]}-{digits_only[8:12]}", False)
+    return (s, False)
+
+def clean_city_and_state(city_val: Any, state_val: Any) -> Tuple[str, str]:
+    """Standardize City and State names."""
+    c_str = str(city_val).strip().upper() if pd.notna(city_val) else ''
+    s_str = str(state_val).strip() if pd.notna(state_val) else ''
+    
+    if c_str in CITY_MAPPING:
+        std_city, std_state = CITY_MAPPING[c_str]
+        return std_city, std_state
+    
+    cleaned_city = str(city_val).strip().title() if pd.notna(city_val) else 'Unknown'
+    cleaned_state = str(state_val).strip().title() if pd.notna(state_val) else 'Unknown'
+    return cleaned_city, cleaned_state
+
+def normalize_kyc_status(val: Any) -> str:
+    """Normalize KYC status to VERIFIED, PENDING, REJECTED."""
+    if pd.isna(val):
+        return 'UNKNOWN'
+    s = str(val).strip().upper()
+    if s in {'VERIFIED', 'DONE', 'APPROVED', 'V', 'KYC_DONE', 'SUCCESS'}:
+        return 'VERIFIED'
+    elif s in {'PENDING', 'IN_PROGRESS', 'UNDER REVIEW', 'P', 'INITIATED'}:
+        return 'PENDING'
+    elif s in {'REJECTED', 'REJECT', 'FAILED', 'R', 'DECLINED'}:
+        return 'REJECTED'
+    return 'UNKNOWN'
+
+def normalize_risk_segment(val: Any) -> str:
+    """Normalize user risk segment to LOW, MEDIUM, HIGH, UNKNOWN."""
+    if pd.isna(val):
+        return 'UNKNOWN'
+    s = str(val).strip().upper()
+    if s in {'LOW', 'MEDIUM', 'HIGH'}:
+        return s
+    return 'UNKNOWN'
+
+# --- Merchant Master Cleaners ---
+
+def clean_mcc(mcc_val: Any, category_val: Any) -> Tuple[str, str]:
+    """Normalize MCC code to 4 digits and map to canonical category."""
+    mcc_clean = None
+    if pd.notna(mcc_val):
+        mcc_s = str(mcc_val).strip()
+        mcc_digits = re.sub(r'\D', '', mcc_s)
+        if '.' in mcc_s:
+            try:
+                mcc_digits = str(int(float(mcc_s)))
+            except:
+                pass
+        if len(mcc_digits) == 4:
+            mcc_clean = mcc_digits
+        elif len(mcc_digits) == 5 and mcc_digits.startswith('0'):
+            mcc_clean = mcc_digits[1:]
+    
+    cat_clean = None
+    if pd.notna(category_val):
+        cat_norm = str(category_val).strip().lower().replace('_', ' ').replace('-', ' ')
+        cat_norm = re.sub(r'\s+', ' ', cat_norm)
+        if cat_norm in CATEGORY_TO_MCC_MAP:
+            inferred_mcc = CATEGORY_TO_MCC_MAP[cat_norm]
+            if not mcc_clean:
+                mcc_clean = inferred_mcc
+            cat_clean = MCC_CATEGORY_MAP.get(inferred_mcc, cat_norm.title())
+        else:
+            cat_clean = cat_norm.title()
+            
+    if mcc_clean and mcc_clean in MCC_CATEGORY_MAP:
+        cat_clean = MCC_CATEGORY_MAP[mcc_clean]
+    elif not mcc_clean:
+        mcc_clean = '5999'
+        cat_clean = cat_clean or 'Miscellaneous Retail'
+        
+    return mcc_clean, cat_clean or 'Miscellaneous Retail'
+
+def normalize_business_type(val: Any) -> str:
+    """Normalize business legal structure."""
+    if pd.isna(val):
+        return 'Individual'
+    s = str(val).strip().upper().replace('-', ' ').replace('_', ' ')
+    if 'PVT' in s or 'PRIVATE' in s:
+        return 'Private Limited'
+    elif 'SOLE' in s or 'PROPRIETOR' in s:
+        return 'Sole Proprietorship'
+    elif 'PARTNER' in s:
+        return 'Partnership'
+    elif 'LLC' in s or 'LIMITED' in s:
+        return 'LLC / Corporate'
+    elif 'INDIVIDUAL' in s:
+        return 'Individual'
+    return 'Individual'
+
+def normalize_merchant_status(val: Any) -> str:
+    """Normalize merchant status."""
+    if pd.isna(val):
+        return 'UNKNOWN'
+    s = str(val).strip().upper()
+    if s in {'ACTIVE', 'LIVE', 'ENABLED', 'A'}:
+        return 'ACTIVE'
+    elif s in {'INACTIVE', 'I', 'DISABLED', 'CLOSED'}:
+        return 'INACTIVE'
+    elif s in {'SUSPENDED', 'BLOCKED', 'S'}:
+        return 'SUSPENDED'
+    elif s in {'HOLD', 'ON_HOLD', 'PENDING'}:
+        return 'ON_HOLD'
+    return 'UNKNOWN'
+
+# --- Chargebacks JSON Cleaners ---
+
+def normalize_dispute_reason(val: Any) -> str:
+    """Standardize chargeback reason codes."""
+    if pd.isna(val):
+        return 'Other Dispute'
+    s = str(val).strip().lower()
+    
+    fraud_keywords = ['login compromised', 'unauthorised', 'unauthorized', 'fraud', 'ato', 
+                      'takeover', 'hacked', 'scam', 'unauth', 'not done by me', 'suspicious']
+    delivery_keywords = ['not delivered', 'no service', 'service issue', 'service failed', 
+                         'not provided', 'delivery issue', 'item not received']
+    tech_keywords = ['extra amount', 'double debit', 'charged twice', 'wrong amount', 
+                     'dup_debit', 'incorrect amount', 'duplicate debit', 'amount mismatch']
+    
+    for kw in fraud_keywords:
+        if kw in s:
+            return 'Unauthorized / Fraud / ATO'
+    for kw in delivery_keywords:
+        if kw in s:
+            return 'Goods / Services Not Delivered'
+    for kw in tech_keywords:
+        if kw in s:
+            return 'Duplicate / Technical Debit'
+    return 'Customer Dispute'
+
+def normalize_dispute_severity(val: Any) -> str:
+    """Normalize dispute severity to CRITICAL, HIGH, MEDIUM, LOW."""
+    if pd.isna(val):
+        return 'MEDIUM'
+    s = str(val).strip().upper()
+    if s in {'CRITICAL', 'CRIT', 'P1'}:
+        return 'CRITICAL'
+    elif s in {'HIGH', 'H', 'P2'}:
+        return 'HIGH'
+    elif s in {'MEDIUM', 'M', 'P3'}:
+        return 'MEDIUM'
+    elif s in {'LOW', 'L', 'P4'}:
+        return 'LOW'
+    return 'MEDIUM'
+
+def normalize_resolution_status(val: Any) -> str:
+    """Normalize dispute resolution status."""
+    if pd.isna(val):
+        return 'OPEN'
+    s = str(val).strip().upper()
+    if s in {'CLOSED'}:
+        return 'CLOSED'
+    elif s in {'RESOLVED'}:
+        return 'RESOLVED'
+    elif s in {'IN PROGRESS', 'IN_PROGRESS', 'WIP', 'PENDING BANK', 'PENDING_BANK'}:
+        return 'IN_PROGRESS'
+    elif s in {'OPEN'}:
+        return 'OPEN'
+    elif s in {'REJECTED'}:
+        return 'REJECTED'
+    return 'OPEN'
+
+def normalize_channel(val: Any) -> str:
+    """Normalize complaint reporting channel."""
+    if pd.isna(val):
+        return 'Other'
+    s = str(val).strip().title()
+    if 'Ivr' in s:
+        return 'IVR'
+    elif 'Call Center' in s:
+        return 'Call Center'
+    elif 'App' in s:
+        return 'Mobile App'
+    elif 'Branch' in s:
+        return 'Branch'
+    elif 'Chatbot' in s:
+        return 'Chatbot'
+    elif 'Email' in s:
+        return 'Email'
+    return s
+
+# --- Full Pipeline Cleaning Functions ---
