@@ -96,3 +96,60 @@ def build_relational_model(
     logger.info(f"Unified data mart generated with {len(unified)} records.")
     return dim_customers, dim_merchants, fact_transactions, fact_chargebacks, unified
 
+def export_data_model(
+    dim_customers: pd.DataFrame,
+    dim_merchants: pd.DataFrame,
+    fact_transactions: pd.DataFrame,
+    fact_chargebacks: pd.DataFrame,
+    unified: pd.DataFrame,
+    output_dir: str = "data_cleaned",
+    db_name: str = "fintech_analytics.db"
+):
+    """
+    Exports cleaned datasets to Parquet, CSV, and SQLite with indexes.
+    """
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    
+    tables = {
+        'dim_customers': dim_customers,
+        'dim_merchants': dim_merchants,
+        'fact_transactions': fact_transactions,
+        'fact_chargebacks': fact_chargebacks,
+        'fact_unified_analytics': unified
+    }
+    
+    for name, df in tables.items():
+        csv_file = out_path / f"{name}.csv"
+        parquet_file = out_path / f"{name}.parquet"
+        df.to_csv(csv_file, index=False)
+        
+        df_pq = df.copy()
+        for col in df_pq.select_dtypes(include=['period[M]']).columns:
+            df_pq[col] = df_pq[col].astype(str)
+        df_pq.to_parquet(parquet_file, index=False)
+        logger.info(f"Exported {name} -> {csv_file.name} & {parquet_file.name} ({len(df)} rows)")
+        
+    # Export to SQLite DB
+    db_path = out_path / db_name
+    conn = sqlite3.connect(db_path)
+    try:
+        for name, df in tables.items():
+            df_sql = df.copy()
+            for col in df_sql.select_dtypes(include=['datetime64[ns]', 'period[M]']).columns:
+                df_sql[col] = df_sql[col].astype(str)
+            df_sql.to_sql(name, conn, if_exists='replace', index=False)
+            
+        cursor = conn.cursor()
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_txn_id ON fact_transactions(txn_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_txn_user ON fact_transactions(user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_txn_mch ON fact_transactions(merchant_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cb_txn ON fact_chargebacks(txn_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cb_user ON fact_chargebacks(user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cb_mch ON fact_chargebacks(merchant_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cust_user ON dim_customers(user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_mch_mch ON dim_merchants(merchant_id);")
+        conn.commit()
+        logger.info(f"Exported SQLite database to {db_path} with indexes.")
+    finally:
+        conn.close()
