@@ -1,0 +1,14 @@
+# Core Data Engineering & Analytics
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=14.0.0
+
+# Graph Theory & Network Intelligence
+networkx>=3.0
+
+# Interactive Dashboard & Visualizations
+streamlit>=1.35.0
+plotly>=5.18.0
+
+# Testing & Utilities
+pytest>=7.0.0
