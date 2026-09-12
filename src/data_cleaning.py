@@ -429,3 +429,134 @@ def normalize_channel(val: Any) -> str:
     return s
 
 # --- Full Pipeline Cleaning Functions ---
+
+def clean_upi_transactions(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean and standardize UPI transactions dataset."""
+    logger.info("Cleaning UPI Transactions dataset...")
+    df = df.copy()
+    
+    df['txn_id'] = df['txn_id'].apply(standardize_txn_id)
+    df['user_id'] = df['user_id'].apply(standardize_user_id)
+    df['merchant_id'] = df['merchant_id'].apply(standardize_merchant_id)
+    df['amount'] = df['amount'].apply(clean_amount)
+    df['timestamp'] = parse_mixed_datetime_series(df['timestamp'])
+    df['status'] = df['status'].apply(normalize_txn_status)
+    
+    utr_results = df['utr'].apply(clean_utr)
+    df['utr'] = [res[0] for res in utr_results]
+    df['is_valid_utr'] = [res[1] for res in utr_results]
+    
+    df['mcc'] = df['mcc'].apply(lambda x: clean_mcc(x, None)[0])
+    
+    # Deduplicate
+    initial_len = len(df)
+    df = df.drop_duplicates(subset=['txn_id', 'user_id', 'merchant_id', 'timestamp', 'amount'], keep='first')
+    dedup_count = initial_len - len(df)
+    if dedup_count > 0:
+        logger.info(f"Removed {dedup_count} exact duplicate transaction rows.")
+        
+    return df
+
+def clean_kyc_records(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean and standardize Customer KYC Master dataset."""
+    logger.info("Cleaning Customer KYC dataset...")
+    df = df.copy()
+    
+    df['user_id'] = df['user_id'].apply(standardize_user_id)
+    df['full_name'] = df['full_name'].astype(str).str.strip().str.title()
+    
+    pan_res = df['pan'].apply(clean_pan)
+    df['pan'] = [r[0] for r in pan_res]
+    df['is_valid_pan'] = [r[1] for r in pan_res]
+    
+    aadhaar_res = df['aadhaar'].apply(clean_aadhaar)
+    df['aadhaar'] = [r[0] for r in aadhaar_res]
+    df['is_valid_aadhaar'] = [r[1] for r in aadhaar_res]
+    
+    df['date_of_birth'] = parse_mixed_datetime_series(df['date_of_birth'])
+    df['signup_timestamp'] = parse_mixed_datetime_series(df['signup_timestamp'])
+    
+    city_state_res = [clean_city_and_state(c, s) for c, s in zip(df['city'], df['state'])]
+    df['city'] = [cs[0] for cs in city_state_res]
+    df['state'] = [cs[1] for cs in city_state_res]
+    
+    df['monthly_income'] = df['monthly_income'].apply(clean_amount)
+    
+    df['occupation'] = df['occupation'].astype(str).str.strip().str.title()
+    df['occupation'] = df['occupation'].replace({'Nan': 'Unspecified', 'None': 'Unspecified', '': 'Unspecified'})
+    
+    df['kyc_status'] = df['kyc_status'].apply(normalize_kyc_status)
+    df['risk_segment'] = df['risk_segment'].apply(normalize_risk_segment)
+    
+    df = df.drop_duplicates(subset=['user_id'], keep='first')
+    return df
+
+def clean_merchants_master(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean and standardize Merchant Master dataset."""
+    logger.info("Cleaning Merchant Master dataset...")
+    df = df.copy()
+    
+    df['merchant_id'] = df['merchant_id'].apply(standardize_merchant_id)
+    df['merchant_name'] = df['merchant_name'].astype(str).str.strip().str.title()
+    
+    mcc_cat_res = [clean_mcc(m, c) for m, c in zip(df['mcc'], df['merchant_category'])]
+    df['mcc'] = [mc[0] for mc in mcc_cat_res]
+    df['merchant_category'] = [mc[1] for mc in mcc_cat_res]
+    
+    df['business_type'] = df['business_type'].apply(normalize_business_type)
+    df['merchant_status'] = df['merchant_status'].apply(normalize_merchant_status)
+    
+    city_state_res = [clean_city_and_state(c, s) for c, s in zip(df['city'], df['state'])]
+    df['city'] = [cs[0] for cs in city_state_res]
+    df['state'] = [cs[1] for cs in city_state_res]
+    
+    df['onboarding_date'] = parse_mixed_datetime_series(df['onboarding_date'])
+    df['declared_avg_ticket_size'] = df['declared_avg_ticket_size'].apply(clean_amount)
+    
+    df['settlement_account'] = df['settlement_account'].astype(str).str.strip()
+    df['settlement_account'] = df['settlement_account'].replace({'nan': None, 'None': None, 'NA': None, '': None})
+    
+    df = df.drop_duplicates(subset=['merchant_id'], keep='first')
+    return df
+
+def clean_chargebacks(json_data: Union[list, str, pd.DataFrame], upi_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """Clean and standardize Chargebacks dataset."""
+    logger.info("Cleaning Chargebacks dataset...")
+    if isinstance(json_data, str):
+        with open(json_data, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        df = pd.DataFrame(data)
+    elif isinstance(json_data, list):
+        df = pd.DataFrame(json_data)
+    else:
+        df = json_data.copy()
+        
+    df['complaint_id'] = df['complaint_id'].apply(standardize_complaint_id)
+    df['txn_id'] = df['txn_id'].apply(standardize_txn_id)
+    df['user_id'] = df['user_id'].apply(standardize_user_id)
+    df['merchant_id'] = df['merchant_id'].apply(standardize_merchant_id)
+    
+    df['transaction_timestamp'] = parse_mixed_datetime_series(df['transaction_timestamp'])
+    df['reported_timestamp'] = parse_mixed_datetime_series(df['reported_timestamp'])
+    df['bank_response_timestamp'] = parse_mixed_datetime_series(df['bank_response_timestamp'])
+    
+    df['disputed_amount'] = df['disputed_amount'].apply(clean_amount)
+    
+    # Impute missing disputed amounts from UPI transactions where available
+    if upi_df is not None:
+        txn_amt_map = upi_df.dropna(subset=['txn_id', 'amount']).drop_duplicates(subset=['txn_id']).set_index('txn_id')['amount'].to_dict()
+        df['disputed_amount'] = df.apply(
+            lambda r: txn_amt_map.get(r['txn_id'], r['disputed_amount']) if pd.isna(r['disputed_amount']) else r['disputed_amount'],
+            axis=1
+        )
+        
+    df['reason_category'] = df['reason_code'].apply(normalize_dispute_reason)
+    df['severity'] = df['severity'].apply(normalize_dispute_severity)
+    df['resolution_status'] = df['resolution_status'].apply(normalize_resolution_status)
+    df['channel'] = df['channel'].apply(normalize_channel)
+    
+    df['reporting_delay_days'] = (df['reported_timestamp'] - df['transaction_timestamp']).dt.total_seconds() / (24 * 3600)
+    df['reporting_delay_days'] = df['reporting_delay_days'].apply(lambda x: max(0.0, round(x, 2)) if pd.notna(x) else None)
+    
+    df = df.drop_duplicates(subset=['complaint_id'], keep='first')
+    return df
