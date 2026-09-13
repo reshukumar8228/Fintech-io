@@ -464,3 +464,118 @@ with tabs[1]:
 
 
 # ==========================================
+# TAB 3: CUSTOMER & KYC 360
+# ==========================================
+with tabs[2]:
+    st.markdown("""
+    <div class='insight-card'>
+        <strong>👤 Identity Funnel Insight:</strong> Unverified and rejected KYC customers account for a disproportionate share of chargebacks.
+        Strict verification gatekeeping reduces dispute losses by over 40%.
+    </div>
+    """, unsafe_allow_html=True)
+
+    df_kyc = engine.get_kyc_status_breakdown(filtered_df)
+    
+    col_k1, col_k2 = st.columns(2)
+    with col_k1:
+        if not df_kyc.empty:
+            fig_kyc_vol = px.pie(
+                df_kyc, names='kyc_status', values='total_amount',
+                title="Transaction Volume by Customer KYC Status",
+                hole=0.45,
+                color='kyc_status',
+                color_discrete_map={'VERIFIED': '#00cc88', 'PENDING': '#ffa500', 'REJECTED': '#ff4b4b', 'UNREGISTERED': '#636e72'},
+                template="plotly_dark"
+            )
+            fig_kyc_vol.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_kyc_vol, use_container_width=True)
+        else:
+            st.info("No KYC data available.")
+        
+    with col_k2:
+        if not df_kyc.empty:
+            fig_kyc_disp = px.bar(
+                df_kyc, x='kyc_status', y='dispute_rate',
+                title="Dispute Rate by KYC Status (%)",
+                color='dispute_rate', color_continuous_scale='Reds',
+                template="plotly_dark"
+            )
+            fig_kyc_disp.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_kyc_disp, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("High-Risk Repeat-Dispute Customer Watchlist")
+    high_risk_users = engine.get_high_risk_users(filtered_df, top_n=20)
+    if not high_risk_users.empty:
+        st.dataframe(
+            high_risk_users[[
+                'user_id', 'full_name', 'kyc_status', 'risk_segment', 'city',
+                'dispute_count', 'total_disputed_amount', 'avg_delay'
+            ]].style.format({
+                'total_disputed_amount': '₹{:,.2f}',
+                'avg_delay': '{:.1f} days'
+            }),
+            use_container_width=True
+        )
+    else:
+        st.info("No repeat dispute customers in current slice.")
+
+
+# ==========================================
+# TAB 4: DISPUTES & CHARGEBACKS
+# ==========================================
+with tabs[3]:
+    st.markdown("""
+    <div class='insight-card'>
+        <strong>⚠️ SLA & ATO Early Warning:</strong> Disputes lodged >7 days after transaction timestamp strongly signal Account Takeover (ATO) 
+        or credential stuffing where the genuine cardholder/account owner realizes theft only at billing cycle close.
+    </div>
+    """, unsafe_allow_html=True)
+
+    df_reasons = engine.get_chargeback_reasons(filtered_df)
+    df_sev = engine.get_chargeback_severity(filtered_df)
+    
+    col_d1, col_d2 = st.columns(2)
+    with col_d1:
+        if not df_reasons.empty:
+            fig_reason = px.pie(
+                df_reasons, names='reason_category', values='complaint_count',
+                title="Dispute Reason Code Distribution",
+                hole=0.45,
+                template="plotly_dark"
+            )
+            fig_reason.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_reason, use_container_width=True)
+        else:
+            st.info("No dispute reasons in selected slice.")
+            
+    with col_d2:
+        if not df_sev.empty:
+            fig_sev = px.bar(
+                df_sev, x='severity', y='complaint_count',
+                title="Dispute Severity Priority Breakdown",
+                color='severity',
+                color_discrete_map={'CRITICAL': '#ff4b4b', 'HIGH': '#ff7675', 'MEDIUM': '#ffa500', 'LOW': '#00cc88'},
+                template="plotly_dark"
+            )
+            fig_sev.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_sev, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Dispute Reporting Delays (>7 Days Indicates ATO / Fraud Syndicate)")
+    disputed_slice = filtered_df[filtered_df['is_disputed'] & filtered_df['reporting_delay_days'].notna()]
+    if not disputed_slice.empty:
+        fig_delay = px.histogram(
+            disputed_slice, x='reporting_delay_days', nbins=30,
+            title="Dispute Reporting Delay Distribution (Days from Transaction to Dispute)",
+            labels={'reporting_delay_days': 'Reporting Delay (Days)'},
+            color_discrete_sequence=['#00d2ff'],
+            template="plotly_dark"
+        )
+        fig_delay.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+        st.plotly_chart(fig_delay, use_container_width=True)
+    else:
+        st.info("No dispute delay data in selected slice.")
+
+
+# ==========================================
