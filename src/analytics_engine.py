@@ -209,3 +209,104 @@ class AnalyticsEngine:
         return hourly.sort_values('hour')
 
     # --- Merchant & Category Performance ---
+
+    def get_merchant_category_metrics(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """Computes performance, volume, dispute rate, and failure rate by merchant category."""
+        data = self.df_unified if df is None else df
+        if data.empty:
+            return pd.DataFrame(columns=['merchant_category', 'txn_count', 'total_amount', 'avg_ticket_size', 'chargeback_count', 'disputed_amount', 'failed_count', 'dispute_rate', 'dispute_volume_share', 'failure_rate'])
+            
+        cat_summary = data.groupby('merchant_category').agg(
+            txn_count=('txn_id', 'count'),
+            total_amount=('amount', 'sum'),
+            avg_ticket_size=('amount', 'mean'),
+            chargeback_count=('is_disputed', 'sum'),
+            disputed_amount=('disputed_amount', 'sum'),
+            failed_count=('status', lambda s: (s == 'FAILED').sum())
+        ).reset_index()
+        
+        cat_summary['dispute_rate'] = np.where(cat_summary['txn_count'] > 0, cat_summary['chargeback_count'] / cat_summary['txn_count'], 0.0)
+        cat_summary['dispute_volume_share'] = np.where(cat_summary['total_amount'] > 0, cat_summary['disputed_amount'] / cat_summary['total_amount'], 0.0)
+        cat_summary['failure_rate'] = np.where(cat_summary['txn_count'] > 0, cat_summary['failed_count'] / cat_summary['txn_count'], 0.0)
+        return cat_summary.sort_values('total_amount', ascending=False)
+
+    def get_top_merchants_by_chargebacks(self, df: Optional[pd.DataFrame] = None, top_n: int = 15) -> pd.DataFrame:
+        """Returns top merchants by chargeback count, disputed amount, and dispute ratio."""
+        data = self.df_unified if df is None else df
+        if data.empty:
+            return pd.DataFrame(columns=['merchant_id', 'merchant_name', 'merchant_category', 'merchant_status', 'txn_count', 'total_amount', 'chargeback_count', 'disputed_amount', 'chargeback_ratio'])
+            
+        mch_perf = data.groupby(['merchant_id', 'merchant_name', 'merchant_category', 'merchant_status']).agg(
+            txn_count=('txn_id', 'count'),
+            total_amount=('amount', 'sum'),
+            chargeback_count=('is_disputed', 'sum'),
+            disputed_amount=('disputed_amount', 'sum')
+        ).reset_index()
+        
+        mch_perf['chargeback_ratio'] = np.where(mch_perf['txn_count'] > 0, mch_perf['chargeback_count'] / mch_perf['txn_count'], 0.0)
+        return mch_perf.sort_values('chargeback_count', ascending=False).head(top_n)
+
+    def get_high_risk_merchants(self, df: Optional[pd.DataFrame] = None, min_txns: int = 3, top_n: int = 20) -> pd.DataFrame:
+        """
+        Identifies high-risk merchants using a calibrated multi-factor risk model:
+        - Factor 1: Chargeback ratio (0-40 pts)
+        - Factor 2: Total Disputed Volume (0-30 pts)
+        - Factor 3: Declared Ticket Size Discrepancy (0-15 pts)
+        - Factor 4: Suspended / Inactive merchant status (0-15 pts)
+        """
+        data = self.df_unified if df is None else df
+        if data.empty:
+            return pd.DataFrame(columns=['merchant_id', 'merchant_name', 'merchant_category', 'merchant_status', 'txn_count', 'total_amount', 'chargeback_count', 'disputed_amount', 'chargeback_ratio', 'risk_score'])
+            
+        mch_perf = data.groupby(['merchant_id', 'merchant_name', 'merchant_category', 'merchant_status']).agg(
+            txn_count=('txn_id', 'count'),
+            total_amount=('amount', 'sum'),
+            chargeback_count=('is_disputed', 'sum'),
+            disputed_amount=('disputed_amount', 'sum'),
+            declared_avg_ticket=('declared_avg_ticket_size', 'first')
+        ).reset_index()
+        
+        mch_perf['chargeback_ratio'] = np.where(mch_perf['txn_count'] > 0, mch_perf['chargeback_count'] / mch_perf['txn_count'], 0.0)
+        mch_perf['actual_avg_ticket'] = np.where(mch_perf['txn_count'] > 0, mch_perf['total_amount'] / mch_perf['txn_count'], 0.0)
+        
+        max_cb_amt = mch_perf['disputed_amount'].max() or 1.0
+        
+        def calc_risk(row):
+            score = min(row['chargeback_ratio'] * 200, 40.0)
+            score += min((row['disputed_amount'] / max_cb_amt) * 30, 30.0)
+            if pd.notna(row['declared_avg_ticket']) and row['declared_avg_ticket'] > 0:
+                ticket_ratio = row['actual_avg_ticket'] / row['declared_avg_ticket']
+                if ticket_ratio > 2.0 or ticket_ratio < 0.5:
+                    score += 15.0
+            if row['merchant_status'] in ['SUSPENDED', 'ON_HOLD', 'INACTIVE']:
+                score += 15.0
+            return round(min(score, 100.0), 1)
+            
+        mch_perf['risk_score'] = mch_perf.apply(calc_risk, axis=1)
+        filtered = mch_perf[mch_perf['txn_count'] >= min_txns]
+        return filtered.sort_values('risk_score', ascending=False).head(top_n)
+
+    def get_merchant_ticket_anomalies(self, df: Optional[pd.DataFrame] = None, ratio_threshold: float = 2.5, top_n: int = 15) -> pd.DataFrame:
+        """
+        Detects merchants where actual transaction average exceeds declared ticket size by >250%.
+        This is a classic indicator of account compromise, unauthorized billing, or high-risk category evasion.
+        """
+        data = self.df_unified if df is None else df
+        if data.empty:
+            return pd.DataFrame()
+            
+        mch_stats = data.groupby(['merchant_id', 'merchant_name', 'merchant_category', 'merchant_status']).agg(
+            txn_count=('txn_id', 'count'),
+            total_amount=('amount', 'sum'),
+            declared_avg_ticket=('declared_avg_ticket_size', 'first'),
+            chargeback_count=('is_disputed', 'sum')
+        ).reset_index()
+        
+        mch_stats = mch_stats[mch_stats['declared_avg_ticket'].notna() & (mch_stats['declared_avg_ticket'] > 0) & (mch_stats['txn_count'] >= 3)]
+        mch_stats['actual_avg_ticket'] = mch_stats['total_amount'] / mch_stats['txn_count']
+        mch_stats['ticket_divergence_ratio'] = mch_stats['actual_avg_ticket'] / mch_stats['declared_avg_ticket']
+        
+        anomalies = mch_stats[mch_stats['ticket_divergence_ratio'] >= ratio_threshold].copy()
+        return anomalies.sort_values('ticket_divergence_ratio', ascending=False).head(top_n)
+
+    # --- Customer & KYC Analytics ---
