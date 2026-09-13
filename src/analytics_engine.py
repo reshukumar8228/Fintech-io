@@ -310,3 +310,140 @@ class AnalyticsEngine:
         return anomalies.sort_values('ticket_divergence_ratio', ascending=False).head(top_n)
 
     # --- Customer & KYC Analytics ---
+
+    def get_kyc_status_breakdown(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """Returns KYC status volume and dispute rates."""
+        data = self.df_unified if df is None else df
+        if data.empty:
+            return pd.DataFrame(columns=['kyc_status', 'txn_count', 'total_amount', 'avg_amount', 'chargeback_count', 'disputed_amount', 'failed_count', 'dispute_rate', 'failure_rate'])
+            
+        kyc_df = data.groupby('kyc_status').agg(
+            txn_count=('txn_id', 'count'),
+            total_amount=('amount', 'sum'),
+            avg_amount=('amount', 'mean'),
+            chargeback_count=('is_disputed', 'sum'),
+            disputed_amount=('disputed_amount', 'sum'),
+            failed_count=('status', lambda s: (s == 'FAILED').sum())
+        ).reset_index()
+        
+        kyc_df['dispute_rate'] = np.where(kyc_df['txn_count'] > 0, kyc_df['chargeback_count'] / kyc_df['txn_count'], 0.0)
+        kyc_df['failure_rate'] = np.where(kyc_df['txn_count'] > 0, kyc_df['failed_count'] / kyc_df['txn_count'], 0.0)
+        return kyc_df.sort_values('total_amount', ascending=False)
+
+    def get_high_risk_users(self, df: Optional[pd.DataFrame] = None, top_n: int = 20) -> pd.DataFrame:
+        """Identifies customers with repeat chargebacks and high dispute values."""
+        data = self.df_unified if df is None else df
+        if data.empty:
+            return pd.DataFrame()
+            
+        disputed = data[data['is_disputed']]
+        if disputed.empty:
+            return pd.DataFrame()
+            
+        user_cb = disputed.groupby(['user_id']).agg(
+            dispute_count=('complaint_id', 'count'),
+            total_disputed_amount=('disputed_amount', 'sum'),
+            avg_delay=('reporting_delay_days', 'mean'),
+            severity_critical=('severity', lambda s: (s == 'CRITICAL').sum())
+        ).reset_index()
+        
+        # Merge with KYC info
+        user_cb = pd.merge(user_cb, self.df_cust, on='user_id', how='left')
+        user_cb['kyc_status'] = user_cb['kyc_status'].fillna('UNREGISTERED')
+        user_cb['risk_segment'] = user_cb['risk_segment'].fillna('UNKNOWN')
+        user_cb['full_name'] = user_cb['full_name'].fillna(user_cb['user_id'])
+        
+        return user_cb.sort_values(['dispute_count', 'total_disputed_amount'], ascending=False).head(top_n)
+
+    # --- Dispute & Chargeback Analytics ---
+
+    def get_chargeback_reasons(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """Returns dispute distribution by canonical reason."""
+        data = self.df_unified if df is None else df
+        disputed = data[data['is_disputed'] & data['reason_category'].notna()]
+        if disputed.empty:
+            return pd.DataFrame(columns=['reason_category', 'complaint_count', 'total_disputed_amount', 'avg_disputed_amount', 'avg_delay_days', 'share_of_disputes'])
+            
+        reasons = disputed.groupby('reason_category').agg(
+            complaint_count=('complaint_id', 'count'),
+            total_disputed_amount=('disputed_amount', 'sum'),
+            avg_disputed_amount=('disputed_amount', 'mean'),
+            avg_delay_days=('reporting_delay_days', 'mean')
+        ).reset_index()
+        total_disp = len(disputed)
+        reasons['share_of_disputes'] = np.where(total_disp > 0, reasons['complaint_count'] / total_disp, 0.0)
+        return reasons.sort_values('complaint_count', ascending=False)
+
+    def get_chargeback_severity(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """Returns dispute breakdown by severity level."""
+        data = self.df_unified if df is None else df
+        disputed = data[data['is_disputed'] & data['severity'].notna()]
+        if disputed.empty:
+            return pd.DataFrame(columns=['severity', 'complaint_count', 'total_disputed_amount', 'avg_disputed_amount', 'share_of_complaints'])
+            
+        sev = disputed.groupby('severity').agg(
+            complaint_count=('complaint_id', 'count'),
+            total_disputed_amount=('disputed_amount', 'sum'),
+            avg_disputed_amount=('disputed_amount', 'mean')
+        ).reset_index()
+        total_disp = len(disputed)
+        sev['share_of_complaints'] = np.where(total_disp > 0, sev['complaint_count'] / total_disp, 0.0)
+        
+        sev_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
+        sev['order'] = sev['severity'].map(sev_order).fillna(4)
+        return sev.sort_values('order').drop(columns=['order'])
+
+    def get_utr_health_metrics(self, df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+        """Analyzes missing and invalid UTR correlation with failed and disputed transactions."""
+        data = self.df_unified if df is None else df
+        total = len(data)
+        if total == 0:
+            return {
+                "total_transactions": 0,
+                "valid_utr_count": 0,
+                "invalid_or_missing_utr_count": 0,
+                "valid_utr_failure_rate": 0.0,
+                "invalid_utr_failure_rate": 0.0,
+                "valid_utr_dispute_rate": 0.0,
+                "invalid_utr_dispute_rate": 0.0,
+            }
+            
+        invalid_utr = data[~data['is_valid_utr'] | data['utr'].isna()]
+        valid_utr = data[data['is_valid_utr'] & data['utr'].notna()]
+        
+        return {
+            "total_transactions": total,
+            "valid_utr_count": len(valid_utr),
+            "invalid_or_missing_utr_count": len(invalid_utr),
+            "valid_utr_failure_rate": round(float((valid_utr['status'] == 'FAILED').mean()), 4) if len(valid_utr) > 0 else 0.0,
+            "invalid_utr_failure_rate": round(float((invalid_utr['status'] == 'FAILED').mean()), 4) if len(invalid_utr) > 0 else 0.0,
+            "valid_utr_dispute_rate": round(float(valid_utr['is_disputed'].mean()), 4) if len(valid_utr) > 0 else 0.0,
+            "invalid_utr_dispute_rate": round(float(invalid_utr['is_disputed'].mean()), 4) if len(invalid_utr) > 0 else 0.0,
+        }
+
+    def detect_merchant_transaction_spikes(self, z_thresh: float = 2.5) -> pd.DataFrame:
+        """
+        Detects merchants experiencing sudden transaction count or volume spikes followed by disputes.
+        """
+        mch_daily = self.df_unified.groupby(['merchant_id', 'merchant_name', 'date']).agg(
+            daily_txns=('txn_id', 'count'),
+            daily_vol=('amount', 'sum'),
+            daily_disputes=('is_disputed', 'sum')
+        ).reset_index()
+        
+        results = []
+        for mch_id, group in mch_daily.groupby('merchant_id'):
+            if len(group) >= 3:
+                mean_txns = group['daily_txns'].mean()
+                std_txns = group['daily_txns'].std()
+                if std_txns and std_txns > 0:
+                    group = group.copy()
+                    group['z_score'] = (group['daily_txns'] - mean_txns) / std_txns
+                    spikes = group[group['z_score'] >= z_thresh]
+                    if not spikes.empty:
+                        results.append(spikes)
+                        
+        if results:
+            spike_df = pd.concat(results, ignore_index=True)
+            return spike_df.sort_values('z_score', ascending=False)
+        return pd.DataFrame(columns=['merchant_id', 'merchant_name', 'date', 'daily_txns', 'daily_vol', 'daily_disputes', 'z_score'])
