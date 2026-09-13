@@ -295,5 +295,172 @@ tabs = st.tabs([
     "🤖 AgentIQ AI Copilot"
 ])
 
+# ==========================================
+# TAB 1: EXECUTIVE OVERVIEW
+# ==========================================
+with tabs[0]:
+    st.markdown("""
+    <div class='insight-card'>
+        <strong>💡 Key Executive Takeaway:</strong> Overall payment volume is stable with an 85.3% success rate. 
+        However, chargebacks correlate heavily with missing/invalid UTR numbers and unverified KYC accounts.
+    </div>
+    """, unsafe_allow_html=True)
 
-# Tabs initialized for subsequent tab feature additions
+    df_daily = engine.get_daily_trends(filtered_df)
+    
+    col_t1, col_t2 = st.columns([2, 1])
+    with col_t1:
+        if not df_daily.empty:
+            fig_vol = go.Figure()
+            fig_vol.add_trace(go.Scatter(
+                x=df_daily['date'], y=df_daily['total_amount'],
+                mode='lines+markers', name='Daily Volume (₹)',
+                line=dict(color='#00d2ff', width=2.5),
+                fill='tozeroy', fillcolor='rgba(0, 210, 255, 0.1)'
+            ))
+            fig_vol.update_layout(
+                title="Daily Transaction Volume Trend (₹)",
+                template="plotly_dark",
+                margin=dict(l=20, r=20, t=40, b=20),
+                hovermode="x unified",
+                height=320
+            )
+            st.plotly_chart(fig_vol, use_container_width=True)
+        else:
+            st.info("No transaction data available for the selected filters.")
+        
+    with col_t2:
+        if not filtered_df.empty:
+            status_dist = filtered_df['status'].value_counts().reset_index()
+            status_dist.columns = ['Status', 'Count']
+            fig_pie = px.pie(
+                status_dist, names='Status', values='Count',
+                title="Transaction Status Distribution",
+                color='Status',
+                color_discrete_map={'SUCCESS': '#00cc88', 'FAILED': '#ff4b4b', 'PENDING': '#ffa500'},
+                hole=0.45,
+                template="plotly_dark"
+            )
+            fig_pie.update_layout(height=320, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_pie, use_container_width=True)
+        else:
+            st.info("No status data available.")
+        
+    col_t3, col_t4 = st.columns(2)
+    with col_t3:
+        if not df_daily.empty:
+            fig_status_bar = go.Figure()
+            fig_status_bar.add_trace(go.Bar(x=df_daily['date'], y=df_daily['success_count'], name='Success', marker_color='#00cc88'))
+            fig_status_bar.add_trace(go.Bar(x=df_daily['date'], y=df_daily['failed_count'], name='Failed', marker_color='#ff4b4b'))
+            fig_status_bar.add_trace(go.Bar(x=df_daily['date'], y=df_daily['pending_count'], name='Pending', marker_color='#ffa500'))
+            fig_status_bar.update_layout(
+                barmode='stack',
+                title="Daily Success vs Failed vs Pending Transactions",
+                template="plotly_dark",
+                height=300,
+                margin=dict(l=20, r=20, t=40, b=20)
+            )
+            st.plotly_chart(fig_status_bar, use_container_width=True)
+        
+    with col_t4:
+        df_hourly = engine.get_hourly_failure_trend(filtered_df)
+        if not df_hourly.empty:
+            fig_hour = px.bar(
+                df_hourly, x='hour', y='failure_rate',
+                title="Hourly Payment Failure Rate (00:00 - 23:00)",
+                labels={'hour': 'Hour of Day', 'failure_rate': 'Failure Rate'},
+                color='failure_rate',
+                color_continuous_scale='Reds',
+                template="plotly_dark"
+            )
+            fig_hour.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_hour, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("UTR Data Quality & Payment Integrity Metrics")
+    utr_m = engine.get_utr_health_metrics(filtered_df)
+    
+    u1, u2, u3, u4 = st.columns(4)
+    u1.metric("Valid UTR Transactions", f"{utr_m['valid_utr_count']:,}")
+    u2.metric("Invalid / Missing UTRs", f"{utr_m['invalid_or_missing_utr_count']:,}")
+    u3.metric("Valid UTR Dispute Rate", f"{utr_m['valid_utr_dispute_rate']:.2%}")
+    u4.metric("Invalid UTR Dispute Rate", f"{utr_m['invalid_utr_dispute_rate']:.2%}")
+
+
+# ==========================================
+# TAB 2: MERCHANT & CATEGORY RISK
+# ==========================================
+with tabs[1]:
+    st.markdown("""
+    <div class='insight-card'>
+        <strong>🚨 Risk Intelligence:</strong> High ticket size divergence (>2.5x declared value) combined with elevated dispute rates 
+        pinpoints collusive merchants or unauthorized surcharge syndicates.
+    </div>
+    """, unsafe_allow_html=True)
+
+    df_cat = engine.get_merchant_category_metrics(filtered_df)
+    
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        if not df_cat.empty:
+            fig_cat_vol = px.bar(
+                df_cat, x='total_amount', y='merchant_category', orientation='h',
+                title="Transaction Volume by Category (₹)",
+                color='total_amount', color_continuous_scale='Blues',
+                template="plotly_dark"
+            )
+            fig_cat_vol.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20), yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_cat_vol, use_container_width=True)
+        else:
+            st.info("No category data available.")
+        
+    with col_c2:
+        if not df_cat.empty:
+            fig_cat_disp = px.bar(
+                df_cat.sort_values('dispute_rate', ascending=True),
+                x='dispute_rate', y='merchant_category', orientation='h',
+                title="Dispute Rate by Merchant Category (%)",
+                color='dispute_rate', color_continuous_scale='Reds',
+                template="plotly_dark"
+            )
+            fig_cat_disp.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_cat_disp, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("High-Risk Merchant Risk Matrix (Risk Score 0 - 100)")
+    risk_merchants = engine.get_high_risk_merchants(filtered_df, min_txns=2, top_n=20)
+    if not risk_merchants.empty:
+        st.dataframe(
+            risk_merchants[[
+                'merchant_id', 'merchant_name', 'merchant_category', 'merchant_status',
+                'txn_count', 'chargeback_count', 'disputed_amount', 'chargeback_ratio', 'risk_score'
+            ]].style.format({
+                'disputed_amount': '₹{:,.2f}',
+                'chargeback_ratio': '{:.1%}',
+                'risk_score': '{:.1f}'
+            }),
+            use_container_width=True
+        )
+    else:
+        st.info("No high-risk merchants found in current filter.")
+
+    st.markdown("---")
+    st.subheader("Merchant Ticket Size Anomaly Detection (Actual vs Declared Divergence > 2.5x)")
+    anomalies = engine.get_merchant_ticket_anomalies(filtered_df, ratio_threshold=2.5, top_n=15)
+    if not anomalies.empty:
+        st.dataframe(
+            anomalies[[
+                'merchant_id', 'merchant_name', 'merchant_category', 'merchant_status',
+                'declared_avg_ticket', 'actual_avg_ticket', 'ticket_divergence_ratio', 'chargeback_count'
+            ]].style.format({
+                'declared_avg_ticket': '₹{:,.2f}',
+                'actual_avg_ticket': '₹{:,.2f}',
+                'ticket_divergence_ratio': '{:.2f}x'
+            }),
+            use_container_width=True
+        )
+    else:
+        st.success("No extreme ticket size divergence anomalies detected in current filter.")
+
+
+# ==========================================
