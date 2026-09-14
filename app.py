@@ -716,3 +716,93 @@ with tabs[4]:
 
 
 # ==========================================
+# TAB 6: AGENTIQ AI COPILOT
+# ==========================================
+with tabs[5]:
+    st.subheader("🤖 AgentIQ Natural Language Analytics & Graph Copilot")
+    st.markdown("Click any preset analytical query below or type your custom question to get real-time computed insights, data tables, and dynamic charts.")
+    
+    st.markdown("#### ⚡ Ready-to-Use Preset Analytical Queries")
+
+    # Row 1 of Presets (4 queries)
+    p_r1_c1, p_r1_c2, p_r1_c3, p_r1_c4 = st.columns(4)
+    with p_r1_c1:
+        if st.button("📈 Daily Volume & Value Trends", use_container_width=True):
+            st.session_state['user_prompt'] = "Daily transaction volume and value trends"
+    with p_r1_c2:
+        if st.button("⚖️ Success vs Failed vs Pending", use_container_width=True):
+            st.session_state['user_prompt'] = "Comparing successful, failed, and pending transactions"
+    with p_r1_c3:
+        if st.button("🏪 Category Performance & Risk", use_container_width=True):
+            st.session_state['user_prompt'] = "Performance & dispute metrics by merchant category"
+    with p_r1_c4:
+        if st.button("🚨 Top Disputed Merchants", use_container_width=True):
+            st.session_state['user_prompt'] = "Top merchants by chargeback count and disputed volume"
+
+    # Row 2 of Presets (4 queries)
+    p_r2_c1, p_r2_c2, p_r2_c3, p_r2_c4 = st.columns(4)
+    with p_r2_c1:
+        if st.button("📋 Dispute Reasons & Severity SLAs", use_container_width=True):
+            st.session_state['user_prompt'] = "Chargeback reason code and severity SLA distributions"
+    with p_r2_c2:
+        if st.button("👤 High-Risk Repeat Customers", use_container_width=True):
+            st.session_state['user_prompt'] = "High-risk repeat-dispute customers"
+    with p_r2_c3:
+        if st.button("💳 Average Ticket Size (ATV) Trends", use_container_width=True):
+            st.session_state['user_prompt'] = "Average transaction value (ATV) trends over time"
+    with p_r2_c4:
+        if st.button("🆔 Volume by Customer KYC Status", use_container_width=True):
+            st.session_state['user_prompt'] = "Transaction volume breakdown by customer KYC status"
+
+    # Row 3 of Presets (3 queries)
+    p_r3_c1, p_r3_c2, p_r3_c3 = st.columns(3)
+    with p_r3_c1:
+        if st.button("⏳ Delayed Disputes (>7 Days ATO)", use_container_width=True):
+            st.session_state['user_prompt'] = "Disputes reported after long delays (>7 days)"
+    with p_r3_c2:
+        if st.button("🎯 Highest Dispute Ratio Merchants", use_container_width=True):
+            st.session_state['user_prompt'] = "Merchants with highest chargeback-to-transaction ratios"
+    with p_r3_c3:
+        if st.button("🕸️ Automated Fraud Ring & Mule Detection", use_container_width=True):
+            st.session_state['user_prompt'] = "Automated fraud ring and mule syndicate detection"
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    current_prompt = st.session_state.get('user_prompt', 'Daily transaction volume and value trends')
+    user_query = st.text_input(
+        "Enter your query or edit the selected preset:",
+        value=current_prompt
+    )
+    
+    if user_query:
+        with st.spinner("Analyzing graph & executing analytics query..."):
+            response = agent.answer_query(user_query)
+            
+        st.markdown(f"### {response['title']}")
+        st.markdown(response['text'])
+        
+        if 'data' in response and isinstance(response['data'], pd.DataFrame) and not response['data'].empty:
+            st.markdown("#### Query Results")
+            st.dataframe(response['data'], use_container_width=True)
+            
+            # Auto-render chart if specified
+            chart_type = response.get('chart_type')
+            if chart_type == 'bar':
+                fig_q = px.bar(response['data'], x=response['x'], y=response['y'], template="plotly_dark")
+                fig_q.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
+                st.plotly_chart(fig_q, use_container_width=True)
+            elif chart_type == 'line':
+                fig_q = px.line(response['data'], x=response['x'], y=response['y'], markers=True, template="plotly_dark")
+                fig_q.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
+                st.plotly_chart(fig_q, use_container_width=True)
+            elif chart_type == 'pie':
+                fig_q = px.pie(response['data'], names=response['names'], values=response['values'], hole=0.45, template="plotly_dark")
+                fig_q.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
+                st.plotly_chart(fig_q, use_container_width=True)
+            elif chart_type == 'bar_grouped':
+                fig_q = go.Figure()
+                for col_name in response['y']:
+                    fig_q.add_trace(go.Bar(x=response['data'][response['x']], y=response['data'][col_name], name=col_name))
+                fig_q.update_layout(barmode='group', template="plotly_dark", height=350, margin=dict(l=20, r=20, t=30, b=20))
+                st.plotly_chart(fig_q, use_container_width=True)
+
