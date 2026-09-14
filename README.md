@@ -5,9 +5,13 @@
 [![Plotly](https://img.shields.io/badge/Plotly-5.24%2B-3F4F75.svg)](https://plotly.com/)
 [![NetworkX](https://img.shields.io/badge/NetworkX-3.6%2B-orange.svg)](https://networkx.org/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite3%20%7C%20Parquet-003B57.svg)](https://www.sqlite.org/)
-[![Tests](https://img.shields.io/badge/Tests-11%2F11%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-14%2F14%20Passed-brightgreen.svg)]()
+[![Live Demo](https://img.shields.io/badge/Live%20App-fintech--io.streamlit.app-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://fintech-io.streamlit.app/)
 
 An enterprise-grade analytics, graph intelligence, and conversational AI solution for **Track 1: FinTech & BFSI - UPI Fraud Ring & Merchant Analytics** (TransOrg AgentIQ Datathon).
+
+> 🌐 **Live Web Application:** **[https://fintech-io.streamlit.app/](https://fintech-io.streamlit.app/)**  
+> Instant access to real-time UPI transaction metrics, high-risk merchant risk scoring, interactive graph fraud rings, and the natural-language AgentIQ AI Copilot.
 
 ---
 
@@ -237,7 +241,7 @@ The embedded AI Copilot interprets natural language queries and returns structur
 
 ## 🖥️ Interactive Dashboard Features
 
-The Streamlit web application (`app.py`) provides 6 interactive modules:
+The Streamlit web application is deployed live at **[https://fintech-io.streamlit.app/](https://fintech-io.streamlit.app/)** (`app.py`) and provides 6 interactive modules:
 
 1. **📊 Executive Overview**: Real-time KPI cards, daily volume area charts, status donuts, stacked daily transaction bars, and 24-hour failure rate heatmaps.
 2. **🏪 Merchant & Category Risk**: Category volume vs dispute charts, and a multi-factor **High-Risk Merchant Risk Matrix** (evaluating chargeback ratio, volume, ticket size deviation, and account status).
@@ -265,6 +269,8 @@ The Streamlit web application (`app.py`) provides 6 interactive modules:
 
 ```
 datathon/
+├── .devcontainer/
+│   └── devcontainer.json                     # 1-Click GitHub Codespaces & VS Code Dev Container Config
 ├── README.md                                 # Complete Project Documentation (This file)
 ├── DATA_DICTIONARY.md                        # Formal Data Dictionary & Column Definitions
 ├── requirements.txt                          # Pinned Python Dependencies
@@ -302,16 +308,32 @@ datathon/
 
 ## ⚙️ Installation & Setup
 
-### Prerequisites
+### Option A: Direct Live Web Application (No Setup Required)
+Instant access in any modern web browser without cloning or installing dependencies:
+👉 **[https://fintech-io.streamlit.app/](https://fintech-io.streamlit.app/)**
+
+---
+
+### Option B: 1-Click Cloud Launch (GitHub Codespaces / Dev Container)
+Launch a private, interactive development environment directly from GitHub:
+1. Click the green **`< > Code`** button at the top of the GitHub repository.
+2. Select the **Codespaces** tab and click **Create codespace on main**.
+3. GitHub automatically boots Python 3.11, installs `requirements.txt`, forwards port `8501`, and opens the live Streamlit dashboard preview!
+
+---
+
+### Option C: Local Environment Setup
+
+#### Prerequisites
 - **Python 3.10+** (Tested on Python 3.10 - 3.13)
 - Windows / macOS / Linux
 
-### 1. Clone or Open the Workspace
+#### 1. Clone or Open the Workspace
 ```powershell
 cd d:\Projects\datathon
 ```
 
-### 2. Install Required Packages
+#### 2. Install Required Packages
 ```powershell
 pip install -r requirements.txt
 ```
@@ -344,10 +366,10 @@ Open your browser at `http://localhost:8501`.
 ## 📑 Official Rubric & Compliance Artifacts
 - **[Data Dictionary](DATA_DICTIONARY.md)**: Full field specifications, SQL schema, foreign key relations, and validation rules.
 - **[Data Cleaning Proof Report](reports/data_cleaning_proof.md)**: Before-and-after missing values, deduplication evidence, and transformation breakdown.
-- **[Judge Evaluation Report](reports/judge_evaluation_report.md)**: Comprehensive evaluation against the Official Judge Rubric with an estimated **138 / 140 (98.6%)** score.
+
 
 ---
 
 ## 👥 Authors & Acknowledgements
-- Developed for the **TransOrg AgentIQ Datathon** (Track 1: FinTech & BFSI).
+- Developed for the **AgentIQ Datathon** (Track 1: FinTech & BFSI).
 - Designed for modern FinTech risk operations, automated fraud detection, and merchant analytics.
