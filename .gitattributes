@@ -1,0 +1,13 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Binary datasets (prevent line ending tampering)
+*.parquet binary
+*.db binary
+*.pyc binary
+
+# Tabular and text data
+*.csv text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.md text eol=lf

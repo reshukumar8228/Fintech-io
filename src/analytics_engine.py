@@ -4,7 +4,6 @@ TransOrg AgentIQ Datathon.
 
 This module computes all business metrics, risk scores, anomaly metrics, and merchant/customer 360 profiles.
 Supports dynamic multidimensional slicing (Date Range, Categories, KYC status, Transaction status, Risk segments).
-# Filter validation and zero-division resilience optimizations applied.
 """
 
 import sqlite3
