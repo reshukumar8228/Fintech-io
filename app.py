@@ -579,3 +579,140 @@ with tabs[3]:
 
 
 # ==========================================
+# TAB 5: FRAUD RING GRAPH VISUALIZER
+# ==========================================
+with tabs[4]:
+    st.markdown("""
+    <div class='insight-card'>
+        <strong>🕸️ Graph Theory Fraud Detection:</strong> Heterogeneous graph analysis exposes two key fraud topologies:
+        1. <strong>Mule Settlement Account Rings:</strong> Multiple front merchants pooling funds into a single underlying bank account.
+        2. <strong>Bipartite Collusive Syndicates:</strong> Dense clusters of compromised users and collusive merchants staging disputes.
+    </div>
+    """, unsafe_allow_html=True)
+
+    rings = graph_engine.detect_shared_account_rings()
+    clusters = graph_engine.detect_collusive_fraud_clusters()
+    
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.markdown(f"#### 🔗 Mule Merchant Rings (Shared Accounts: {len(rings)})")
+        if rings:
+            mule_summary = []
+            for r in rings[:10]:
+                mule_summary.append({
+                    "Settlement Account": r['account_identifier'],
+                    "Merchants": r['merchant_count'],
+                    "Total Transactions": r['total_transactions'],
+                    "Disputes": r['total_disputes'],
+                    "Disputed Amount": f"₹{r['disputed_amount']:,.2f}",
+                    "Risk Level": r['risk_level']
+                })
+            st.dataframe(pd.DataFrame(mule_summary), use_container_width=True)
+            
+    with col_g2:
+        st.markdown(f"#### 🚨 Collusive Fraud Syndicates ({len(clusters)})")
+        if clusters:
+            clust_summary = []
+            for c in clusters[:10]:
+                clust_summary.append({
+                    "Cluster ID": c['cluster_id'],
+                    "Users": c['user_count'],
+                    "Merchants": c['merchant_count'],
+                    "Disputes": c['total_disputes'],
+                    "Disputed Amount": f"₹{c['total_disputed_amount']:,.2f}",
+                    "Risk Score": c['syndicate_risk_score'],
+                    "Risk Tier": c['risk_tier']
+                })
+            st.dataframe(pd.DataFrame(clust_summary), use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Interactive Entity Ego Network Visualizer")
+    
+    col_s1, col_s2, col_s3 = st.columns([2, 1, 1])
+    with col_s1:
+        selected_node = st.text_input("Enter Merchant ID (e.g. MCH7045) or Customer ID (e.g. USR45826):", value="MCH7045")
+    with col_s2:
+        hops = st.slider("Hops Distance", min_value=1, max_value=2, value=1)
+    with col_s3:
+        st.write("")
+        st.write("")
+        btn_visualize = st.button("Render Network Graph", use_container_width=True)
+
+    if selected_node:
+        subg_data = graph_engine.extract_subgraph(selected_node, hops=hops)
+        if "error" in subg_data:
+            st.error(subg_data["error"])
+        else:
+            st.info(f"Visualizing network around **{subg_data['center_node']}** ({subg_data['total_nodes']} nodes, {subg_data['total_edges']} edges)")
+            
+            # Plotly Network Visualization
+            edge_x = []
+            edge_y = []
+            
+            node_map = {n['id']: (n['x'], n['y']) for n in subg_data['nodes']}
+            for edge in subg_data['edges']:
+                if edge['source'] in node_map and edge['target'] in node_map:
+                    x0, y0 = node_map[edge['source']]
+                    x1, y1 = node_map[edge['target']]
+                    edge_x.extend([x0, x1, None])
+                    edge_y.extend([y0, y1, None])
+                    
+            edge_trace = go.Scatter(
+                x=edge_x, y=edge_y,
+                line=dict(width=1.2, color='#74b9ff'),
+                hoverinfo='none',
+                mode='lines'
+            )
+            
+            node_x = [n['x'] for n in subg_data['nodes']]
+            node_y = [n['y'] for n in subg_data['nodes']]
+            node_text = [n['label'] for n in subg_data['nodes']]
+            node_colors = []
+            node_sizes = []
+            
+            for n in subg_data['nodes']:
+                if n['is_center']:
+                    node_colors.append('#e74c3c') # Red for center
+                    node_sizes.append(22)
+                elif n['node_type'] == 'merchant':
+                    node_colors.append('#f39c12') # Orange for merchant
+                    node_sizes.append(15)
+                elif n['node_type'] == 'settlement_account':
+                    node_colors.append('#9b59b6') # Purple for account
+                    node_sizes.append(14)
+                else:
+                    node_colors.append('#2ecc71') # Green for customer
+                    node_sizes.append(12)
+                    
+            node_trace = go.Scatter(
+                x=node_x, y=node_y,
+                mode='markers+text',
+                hoverinfo='text',
+                text=[n['id'] for n in subg_data['nodes']],
+                textposition="top center",
+                textfont=dict(size=9, color="#ffffff"),
+                hovertext=node_text,
+                marker=dict(
+                    color=node_colors,
+                    size=node_sizes,
+                    line=dict(width=2, color='#ffffff')
+                )
+            )
+            
+            fig_net = go.Figure(
+                data=[edge_trace, node_trace],
+                layout=go.Layout(
+                    title=f"Network Ego Graph: {subg_data['center_node']}",
+                    template="plotly_dark",
+                    showlegend=False,
+                    hovermode='closest',
+                    margin=dict(b=20, l=20, r=20, t=40),
+                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                    height=500
+                )
+            )
+            st.plotly_chart(fig_net, use_container_width=True)
+
+
+# ==========================================
