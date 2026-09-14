@@ -44,18 +44,19 @@ st.markdown("""
     }
     
     .sub-title {
-        color: #8892b0;
+        color: var(--text-color, #64748b);
+        opacity: 0.85;
         font-size: 1.0rem;
         margin-bottom: 1.5rem;
     }
     
     .kpi-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(128, 128, 128, 0.06);
+        border: 1px solid rgba(128, 128, 128, 0.2);
         border-radius: 12px;
         padding: 1.2rem 1.0rem;
         text-align: center;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
         transition: transform 0.2s ease, border-color 0.2s ease;
     }
     
@@ -67,14 +68,17 @@ st.markdown("""
     .kpi-val {
         font-size: 1.7rem;
         font-weight: 700;
-        color: #00f2fe;
+        background: linear-gradient(135deg, #00b4d8 0%, #0077b6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         margin-top: 0.3rem;
     }
     
     .kpi-label {
         font-size: 0.85rem;
-        font-weight: 500;
-        color: #a0aec0;
+        font-weight: 600;
+        color: var(--text-color, #475569);
+        opacity: 0.8;
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
@@ -107,29 +111,23 @@ st.markdown("""
     }
     
     .insight-card {
-        background: rgba(0, 210, 255, 0.05);
+        background: rgba(0, 210, 255, 0.06);
         border-left: 4px solid #00d2ff;
         padding: 12px 16px;
         border-radius: 0 8px 8px 0;
         margin-bottom: 16px;
     }
 
+    /* Button layout & smooth micro-interaction */
     div[data-testid="stButton"] > button {
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        background: rgba(255, 255, 255, 0.04);
-        color: #e0e6ed;
-        font-size: 0.85rem;
-        font-weight: 500;
-        padding: 0.45rem 0.65rem;
-        transition: all 0.2s ease;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
     }
     
     div[data-testid="stButton"] > button:hover {
-        border-color: #00d2ff;
-        background: rgba(0, 210, 255, 0.1);
-        color: #00f2fe;
-        transform: translateY(-2px);
+        border-color: #00d2ff !important;
+        transform: translateY(-2px) !important;
     }
 </style>
 """, unsafe_allow_html=True)
