@@ -145,8 +145,7 @@ Implemented in [`src/data_cleaning.py`](file:///d:/Projects/datathon/src/data_cl
 9. **Chargebacks JSON Processing & Imputation (`clean_chargebacks`)**:
    - Resolves reason codes into standard categories (`Unauthorized / Fraud / ATO`, `Goods / Services Not Delivered`, `Duplicate / Technical Debit`, `Customer Dispute`).
    - Imputes missing disputed amounts from the corresponding `Fact Transaction` amount where `txn_id` matches.
-  - Computes dispute reporting delay interval: $\text{Delay (days)} = \text{reported\_timestamp} - \text{transaction\_timestamp}$ (computed as `(reported_timestamp - transaction_timestamp).days`).
-
+   - Computes dispute reporting delay interval: `Delay (days) = reported_timestamp - transaction_timestamp`.
 
 ---
 
