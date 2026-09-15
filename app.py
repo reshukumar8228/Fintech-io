@@ -8,8 +8,11 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
+import logging
 from pathlib import Path
 import sys
+
+logger = logging.getLogger(__name__)
 
 # Set Streamlit Page Configuration
 st.set_page_config(
@@ -217,9 +220,21 @@ filtered_df = engine.filter_data(
 
 kpis = engine.get_summary_kpis(filtered_df)
 
-st.sidebar.markdown("---")
 st.sidebar.markdown(f"**Filtered Slice**: {len(filtered_df):,} / {len(engine.df_unified):,} txns")
 st.sidebar.button("🔄 Reset All Filters", on_click=reset_filters, use_container_width=True)
+
+st.sidebar.markdown("---")
+st.sidebar.title("⚙️ AI Copilot & Developer Settings")
+dev_mode = st.sidebar.toggle("🛠️ Developer Mode", value=False, help="Show Dataset Schema Explorer and Query Execution Trace Panel")
+
+st.sidebar.markdown("#### 🔑 Custom AI API Key & Model")
+provider_choice = st.sidebar.selectbox("API Provider", ["Gemini (Google)", "OpenAI"], index=0)
+custom_key = st.sidebar.text_input("Custom API Key (Optional)", type="password", help="Enter your Gemini or OpenAI API Key to override system defaults")
+custom_model = st.sidebar.text_input("Model Name", value="gemini-1.5-flash" if "Gemini" in provider_choice else "gpt-4o")
+
+# Pass custom settings down to the assistant agent
+provider_str = "openai" if "OpenAI" in provider_choice else "gemini"
+agent.set_custom_api_config(api_key=custom_key if custom_key else None, provider=provider_str, model_name=custom_model)
 
 # ==========================================
 # HEADER & TOP KPIS
@@ -717,90 +732,194 @@ with tabs[4]:
 # TAB 6: AGENTIQ AI COPILOT
 # ==========================================
 with tabs[5]:
-    st.subheader("🤖 AgentIQ Natural Language Analytics & Graph Copilot")
-    st.markdown("Click any preset analytical query below or type your custom question to get real-time computed insights, data tables, and dynamic charts.")
-    
-    st.markdown("#### ⚡ Ready-to-Use Preset Analytical Queries")
+    st.subheader("🤖 AgentIQ Dynamic Dataset-Aware AI Analytics Copilot")
+    st.markdown("Ask natural-language questions about your actual payment, merchant, KYC, and chargeback datasets. The agent calculates figures deterministically and generates dynamic charts.")
 
-    # Row 1 of Presets (4 queries)
-    p_r1_c1, p_r1_c2, p_r1_c3, p_r1_c4 = st.columns(4)
-    with p_r1_c1:
+    # DEVELOPER MODE: DATASET SCHEMA EXPLORER
+    if dev_mode:
+        with st.expander("📁 Dataset Schema Explorer (Developer Mode Active)", expanded=False):
+            st.markdown("Inspect all 5 analytical tables, column definitions, data types, and sample data in the star schema mart:")
+            schema_tabs = st.tabs(["fact_unified_analytics", "dim_customers", "dim_merchants", "fact_transactions", "fact_chargebacks"])
+            
+            with schema_tabs[0]:
+                st.markdown("**fact_unified_analytics**: Denormalized analytics view combining transactions, chargebacks, customer KYC, and merchant registry.")
+                st.markdown(f"Total Rows: **{len(engine.df_unified):,}** | Columns: `{list(engine.df_unified.columns)}`")
+                st.dataframe(engine.df_unified.head(3), use_container_width=True)
+                
+            with schema_tabs[1]:
+                st.markdown("**dim_customers**: Customer KYC master records, risk tiers, monthly income, and geographical state/city.")
+                st.markdown(f"Total Rows: **{len(engine.df_cust):,}** | Columns: `{list(engine.df_cust.columns)}`")
+                st.dataframe(engine.df_cust.head(3), use_container_width=True)
+                
+            with schema_tabs[2]:
+                st.markdown("**dim_merchants**: Merchant registry master, onboarding ticket size, category, status, and settlement accounts.")
+                st.markdown(f"Total Rows: **{len(engine.df_mch):,}** | Columns: `{list(engine.df_mch.columns)}`")
+                st.dataframe(engine.df_mch.head(3), use_container_width=True)
+                
+            with schema_tabs[3]:
+                st.markdown("**fact_transactions**: Core payment clearance events, UTR validity, and time dimensions.")
+                st.markdown(f"Total Rows: **{len(engine.df_txn):,}** | Columns: `{list(engine.df_txn.columns)}`")
+                st.dataframe(engine.df_txn.head(3), use_container_width=True)
+                
+            with schema_tabs[4]:
+                st.markdown("**fact_chargebacks**: Dispute complaints, reason categories, severity SLA levels, and reporting delay days.")
+                st.markdown(f"Total Rows: **{len(engine.df_cb):,}** | Columns: `{list(engine.df_cb.columns)}`")
+                st.dataframe(engine.df_cb.head(3), use_container_width=True)
+
+    # Initialize chat history in session state
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+
+    # Preset Analytical Query Starter Buttons
+    st.markdown("#### ⚡ Ready-to-Use Analytical Queries")
+    
+    preset_cols = st.columns(4)
+    preset_selected = None
+
+    with preset_cols[0]:
         if st.button("📈 Daily Volume & Value Trends", use_container_width=True):
-            st.session_state['user_prompt'] = "Daily transaction volume and value trends"
-    with p_r1_c2:
+            preset_selected = "Show daily transaction volume and value trends"
+        if st.button("⏳ Delayed Disputes (>7 Days)", use_container_width=True):
+            preset_selected = "Disputes reported after long delays (>7 days)"
+
+    with preset_cols[1]:
         if st.button("⚖️ Success vs Failed vs Pending", use_container_width=True):
-            st.session_state['user_prompt'] = "Comparing successful, failed, and pending transactions"
-    with p_r1_c3:
-        if st.button("🏪 Category Performance & Risk", use_container_width=True):
-            st.session_state['user_prompt'] = "Performance & dispute metrics by merchant category"
-    with p_r1_c4:
-        if st.button("🚨 Top Disputed Merchants", use_container_width=True):
-            st.session_state['user_prompt'] = "Top merchants by chargeback count and disputed volume"
-
-    # Row 2 of Presets (4 queries)
-    p_r2_c1, p_r2_c2, p_r2_c3, p_r2_c4 = st.columns(4)
-    with p_r2_c1:
-        if st.button("📋 Dispute Reasons & Severity SLAs", use_container_width=True):
-            st.session_state['user_prompt'] = "Chargeback reason code and severity SLA distributions"
-    with p_r2_c2:
-        if st.button("👤 High-Risk Repeat Customers", use_container_width=True):
-            st.session_state['user_prompt'] = "High-risk repeat-dispute customers"
-    with p_r2_c3:
-        if st.button("💳 Average Ticket Size (ATV) Trends", use_container_width=True):
-            st.session_state['user_prompt'] = "Average transaction value (ATV) trends over time"
-    with p_r2_c4:
-        if st.button("🆔 Volume by Customer KYC Status", use_container_width=True):
-            st.session_state['user_prompt'] = "Transaction volume breakdown by customer KYC status"
-
-    # Row 3 of Presets (3 queries)
-    p_r3_c1, p_r3_c2, p_r3_c3 = st.columns(3)
-    with p_r3_c1:
-        if st.button("⏳ Delayed Disputes (>7 Days ATO)", use_container_width=True):
-            st.session_state['user_prompt'] = "Disputes reported after long delays (>7 days)"
-    with p_r3_c2:
+            preset_selected = "Comparing successful, failed, and pending transactions"
         if st.button("🎯 Highest Dispute Ratio Merchants", use_container_width=True):
-            st.session_state['user_prompt'] = "Merchants with highest chargeback-to-transaction ratios"
-    with p_r3_c3:
-        if st.button("🕸️ Automated Fraud Ring & Mule Detection", use_container_width=True):
-            st.session_state['user_prompt'] = "Automated fraud ring and mule syndicate detection"
+            preset_selected = "Merchants with highest chargeback-to-transaction ratios"
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    with preset_cols[2]:
+        if st.button("🏪 Category Performance & Risk", use_container_width=True):
+            preset_selected = "Performance & dispute metrics by merchant category"
+        if st.button("📊 Q3 Regional Sales Comparison", use_container_width=True):
+            preset_selected = "Compare Q3 sales by region"
+
+    with preset_cols[3]:
+        if st.button("🚨 Top Disputed Merchants", use_container_width=True):
+            preset_selected = "Top merchants by chargeback count and disputed volume"
+        if st.button("🕸️ Fraud Ring & Mule Detection", use_container_width=True):
+            preset_selected = "Automated fraud ring and mule syndicate detection"
+
+    st.markdown("---")
+
+    col_h1, col_h2 = st.columns([4, 1])
+    with col_h2:
+        if st.button("🗑️ Clear Chat", use_container_width=True):
+            st.session_state["chat_history"] = []
+            st.rerun()
+
+    # Render Conversation History
+    for msg in st.session_state["chat_history"]:
+        with st.chat_message(msg["role"]):
+            if msg["role"] == "user":
+                st.write(msg["content"])
+            else:
+                resp = msg["content"]
+                if isinstance(resp, dict):
+                    st.markdown(f"### {resp.get('title', 'Analytics Result')}")
+                    st.markdown(resp.get('answer') or resp.get('text', ''))
+                    
+                    # DEVELOPER MODE: QUERY EXECUTION TRACE PANEL
+                    if dev_mode and "execution_trace" in resp:
+                        trace = resp["execution_trace"]
+                        with st.expander("🔍 Query Execution Trace Panel (Developer Mode Active)", expanded=True):
+                            t_col1, t_col2 = st.columns(2)
+                            with t_col1:
+                                st.markdown(f"- **Planner Engine**: `{trace.get('planner_engine', 'N/A')}`")
+                                st.markdown(f"- **Target Dataset**: `{trace.get('target_dataset', 'N/A')}`")
+                                st.markdown(f"- **Requested Metric**: `{trace.get('requested_metric', 'N/A')}`")
+                                st.markdown(f"- **Aggregation**: `{trace.get('aggregation_function', 'N/A')}`")
+                                st.markdown(f"- **Rows Returned**: `{trace.get('rows_returned', 0)}`")
+                            with t_col2:
+                                st.markdown(f"- **Grouping Dimensions**: `{trace.get('grouping_dimensions', [])}`")
+                                st.markdown(f"- **Filters Applied**: `{trace.get('filters_applied', {})}`")
+                                st.markdown(f"- **Selected Chart Type**: `{trace.get('selected_chart_type', 'N/A')}`")
+                                st.markdown(f"- **X-Axis Field**: `{trace.get('x_axis_field', 'N/A')}`")
+                                st.markdown(f"- **Y-Axis Field**: `{trace.get('y_axis_field', 'N/A')}`")
+
+                    df_res = resp.get('data')
+                    if isinstance(df_res, pd.DataFrame) and not df_res.empty:
+                        st.dataframe(df_res, use_container_width=True)
+
+                    vis = resp.get('visualization') or {}
+                    chart_type = vis.get('type') or resp.get('chart_type')
+                    x_field = vis.get('xField') or resp.get('x')
+                    y_field = vis.get('yField') or resp.get('y')
+                    x_label = vis.get('xLabel') or (x_field.replace('_', ' ').title() if isinstance(x_field, str) else '')
+                    y_label = vis.get('yLabel') or resp.get('y_label') or (y_field.replace('_', ' ').title() if isinstance(y_field, str) else '')
+                    title = vis.get('title') or resp.get('title')
+
+                    if isinstance(df_res, pd.DataFrame) and not df_res.empty and chart_type and chart_type != 'table':
+                        try:
+                            if chart_type == 'bar':
+                                fig = px.bar(
+                                    df_res, x=x_field, y=y_field,
+                                    title=title,
+                                    labels={x_field: x_label, y_field: y_label},
+                                    template="plotly_dark"
+                                )
+                                fig.update_layout(height=380, margin=dict(l=20, r=20, t=40, b=20))
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            elif chart_type == 'line':
+                                fig = px.line(
+                                    df_res, x=x_field, y=y_field,
+                                    markers=True, title=title,
+                                    labels={x_field: x_label, y_field: y_label},
+                                    template="plotly_dark"
+                                )
+                                fig.update_layout(height=380, margin=dict(l=20, r=20, t=40, b=20))
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            elif chart_type == 'scatter':
+                                color_col = 'merchant_category' if 'merchant_category' in df_res.columns else None
+                                fig = px.scatter(
+                                    df_res, x=x_field, y=y_field,
+                                    color=color_col, title=title,
+                                    labels={x_field: x_label, y_field: y_label},
+                                    template="plotly_dark"
+                                )
+                                fig.update_layout(height=380, margin=dict(l=20, r=20, t=40, b=20))
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            elif chart_type == 'pie':
+                                names_col = resp.get('names') or x_field or df_res.columns[0]
+                                values_col = resp.get('values') or y_field or df_res.columns[1]
+                                fig = px.pie(
+                                    df_res, names=names_col, values=values_col,
+                                    hole=0.45, title=title, template="plotly_dark"
+                                )
+                                fig.update_layout(height=380, margin=dict(l=20, r=20, t=40, b=20))
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            elif chart_type == 'bar_grouped' and isinstance(y_field, list):
+                                fig = go.Figure()
+                                for col_name in y_field:
+                                    if col_name in df_res.columns:
+                                        fig.add_trace(go.Bar(x=df_res[x_field], y=df_res[col_name], name=col_name))
+                                fig.update_layout(barmode='group', template="plotly_dark", height=380, margin=dict(l=20, r=20, t=40, b=20))
+                                st.plotly_chart(fig, use_container_width=True)
+                        except Exception as ex:
+                            logger.warning(f"Chart rendering error: {ex}")
+
+    # Process Input from Chat or Presets
+    user_input = st.chat_input("Ask a question about sales, categories, regions, trends, chargebacks, or risk...")
     
-    current_prompt = st.session_state.get('user_prompt', 'Daily transaction volume and value trends')
-    user_query = st.text_input(
-        "Enter your query or edit the selected preset:",
-        value=current_prompt
-    )
-    
-    if user_query:
-        with st.spinner("Analyzing graph & executing analytics query..."):
-            response = agent.answer_query(user_query)
-            
-        st.markdown(f"### {response['title']}")
-        st.markdown(response['text'])
+    active_prompt = user_input or preset_selected
+
+    if active_prompt:
+        st.session_state["chat_history"].append({"role": "user", "content": active_prompt})
         
-        if 'data' in response and isinstance(response['data'], pd.DataFrame) and not response['data'].empty:
-            st.markdown("#### Query Results")
-            st.dataframe(response['data'], use_container_width=True)
+        # Build history context for assistant
+        history_context = [
+            {"role": m["role"], "content": m["content"] if isinstance(m["content"], str) else m["content"].get("answer", "")}
+            for m in st.session_state["chat_history"][:-1]
+        ]
+        
+        with st.spinner("Analyzing dataset & calculating response..."):
+            response = agent.answer_query(active_prompt, history=history_context)
             
-            # Auto-render chart if specified
-            chart_type = response.get('chart_type')
-            if chart_type == 'bar':
-                fig_q = px.bar(response['data'], x=response['x'], y=response['y'], template="plotly_dark")
-                fig_q.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(fig_q, use_container_width=True)
-            elif chart_type == 'line':
-                fig_q = px.line(response['data'], x=response['x'], y=response['y'], markers=True, template="plotly_dark")
-                fig_q.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(fig_q, use_container_width=True)
-            elif chart_type == 'pie':
-                fig_q = px.pie(response['data'], names=response['names'], values=response['values'], hole=0.45, template="plotly_dark")
-                fig_q.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(fig_q, use_container_width=True)
-            elif chart_type == 'bar_grouped':
-                fig_q = go.Figure()
-                for col_name in response['y']:
-                    fig_q.add_trace(go.Bar(x=response['data'][response['x']], y=response['data'][col_name], name=col_name))
-                fig_q.update_layout(barmode='group', template="plotly_dark", height=350, margin=dict(l=20, r=20, t=30, b=20))
-                st.plotly_chart(fig_q, use_container_width=True)
+        st.session_state["chat_history"].append({"role": "assistant", "content": response})
+        st.rerun()
+
 

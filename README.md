@@ -5,13 +5,13 @@
 [![Plotly](https://img.shields.io/badge/Plotly-5.24%2B-3F4F75.svg)](https://plotly.com/)
 [![NetworkX](https://img.shields.io/badge/NetworkX-3.6%2B-orange.svg)](https://networkx.org/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite3%20%7C%20Parquet-003B57.svg)](https://www.sqlite.org/)
-[![Tests](https://img.shields.io/badge/Tests-14%2F14%20Passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-26%2F26%20Passed-brightgreen.svg)]()
 [![Live Demo](https://img.shields.io/badge/Live%20App-fintech--io.streamlit.app-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://fintech-io.streamlit.app/)
 
 An enterprise-grade analytics, graph intelligence, and conversational AI solution for **Track 1: FinTech & BFSI - UPI Fraud Ring & Merchant Analytics** (TransOrg AgentIQ Datathon).
 
 > 🌐 **Live Web Application:** **[https://fintech-io.streamlit.app/](https://fintech-io.streamlit.app/)**  
-> Instant access to real-time UPI transaction metrics, high-risk merchant risk scoring, interactive graph fraud rings, and the natural-language AgentIQ AI Copilot.
+> Instant access to real-time UPI transaction metrics, high-risk merchant risk scoring, interactive graph fraud rings, dynamic dataset-aware AI Copilot with Developer Mode, and interactive Plotly charts.
 
 ---
 
@@ -248,7 +248,11 @@ The Streamlit web application is deployed live at **[https://fintech-io.streamli
 3. **👤 Customer & KYC 360**: KYC conversion funnel, risk segment analysis, and a **High-Risk Repeat-Dispute Customer Watchlist**.
 4. **⚠️ Disputes & Chargebacks**: Dispute reason breakdown, severity SLA analysis, channel distribution, and dispute reporting delay histograms.
 5. **🕸️ Fraud Ring Graph Visualizer**: Tabular summaries of detected mule rings and collusive clusters, with an **Interactive 2D Plotly Ego-Network Visualizer** supporting entity searches.
-6. **🤖 AgentIQ AI Copilot**: Conversational interface with quick preset query chips and free-form natural language querying.
+6. **🤖 AgentIQ AI Copilot & Developer Mode**: Dynamic, dataset-aware conversational agent with:
+   - **Zero Fabricated Answers**: Deterministic aggregations calculated directly over `fact_unified_analytics` (20,000 rows) and SQLite DB.
+   - **Dynamic Plotly Visualizations**: Automatically selects and renders `bar`, `line`, `scatter`, `pie`, `grouped_bar`, and `table` based on question intent.
+   - **🛠️ Developer Mode**: Toggle switch enabling an interactive **Dataset Schema Explorer** and **🔍 Query Execution Trace Panels** showing the planner engine, dataset, metrics, dimensions, filters, and chart type (without exposing chain-of-thought).
+   - **🔑 Custom User API Key & Model Configuration**: Option in sidebar to use custom Google Gemini or OpenAI API keys and custom model names (`gemini-1.5-flash`, `gemini-1.5-pro`, `gpt-4o`, etc.).
 
 ---
 
@@ -275,7 +279,7 @@ datathon/
 ├── DATA_DICTIONARY.md                        # Formal Data Dictionary & Column Definitions
 ├── requirements.txt                          # Pinned Python Dependencies
 ├── .gitignore                                # Git Ignore Configuration
-├── app.py                                    # Streamlit & Plotly Interactive Web Dashboard (6 Tabs)
+├── app.py                                    # Streamlit & Plotly Interactive Web Dashboard (6 Tabs + Dev Mode)
 ├── data_cleaned/                             # Cleaned Data Mart, Exports & SQLite DB
 │   ├── dim_customers.csv & .parquet          # Customer KYC Master (28,920 records)
 │   ├── dim_merchants.csv & .parquet          # Merchant Master (4,343 records)
@@ -293,9 +297,11 @@ datathon/
 │   ├── run_etl.py                            # End-to-end ETL execution pipeline
 │   ├── analytics_engine.py                   # Business KPI, dynamic slicing & risk scoring engine
 │   ├── graph_agent.py                        # NetworkX fraud ring detector & AgentIQ NLP engine
+│   ├── agentic_query_engine.py               # Dataset-aware query planner, dynamic Plotly engine, & trace auditor
 │   └── tests/
 │       ├── __init__.py
-│       └── test_pipeline.py                  # 14 Automated unit and integration tests
+│       ├── test_pipeline.py                  # 14 Automated ETL, metric, and graph algorithm tests
+│       └── test_agentic_query.py             # 12 Automated NLP query, dynamic chart, and trace tests
 └── track1_fintech_dataset_files/             # Original raw synthetic datasets
     ├── track1_chargebacks.json
     ├── track1_dataset_notes.txt
@@ -343,11 +349,11 @@ pip install -r requirements.txt
 ## 🚀 How to Run & Verify
 
 ### 1. Run Automated Test Suite
-Executes 14 unit and integration tests verifying ID normalizers, amount parsers, datetime handling, KYC cleaners, dynamic multidimensional slicing, business metrics, graph algorithms, and all 12 datathon queries:
+Executes all 26 unit and integration tests verifying ID normalizers, amount parsers, datetime handling, KYC cleaners, dynamic multidimensional slicing, business metrics, graph algorithms, NLP query planning, dynamic chart generation, and trace auditability:
 ```powershell
-python -m unittest discover -s src/tests -v
+pytest
 ```
-*Result: `14 tests passed in ~7.4s (OK)`.*
+*Result: `26 passed in ~12.4s (OK)`.*
 
 ### 2. Run the Full ETL Pipeline
 Processes raw files, normalizes all attributes, and regenerates Parquet, CSV, and SQLite datasets:
