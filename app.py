@@ -136,13 +136,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_resource(show_spinner="Initializing Analytics Engine & Knowledge Graph...")
-def get_engines():
+def get_data_engines():
     engine = AnalyticsEngine("data_cleaned")
     graph_engine = FraudGraphEngine("data_cleaned")
-    agent = AgentIQAssistant(engine, graph_engine)
-    return engine, graph_engine, agent
+    return engine, graph_engine
 
-engine, graph_engine, agent = get_engines()
+engine, graph_engine = get_data_engines()
+agent = AgentIQAssistant(engine, graph_engine)
 
 # ==========================================
 # SIDEBAR FILTERS (DYNAMIC MULTIDIMENSIONAL SLICING)
@@ -920,7 +920,10 @@ with tabs[5]:
         ]
         
         with st.spinner("Analyzing dataset & calculating response..."):
-            response = agent.answer_query(active_prompt, history=history_context)
+            try:
+                response = agent.answer_query(active_prompt, history=history_context)
+            except TypeError:
+                response = agent.answer_query(active_prompt)
             
         st.session_state["chat_history"].append({"role": "assistant", "content": response})
         st.rerun()
