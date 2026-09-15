@@ -170,8 +170,22 @@ class AgenticQueryEngine:
         self.db_path = db_path if db_path.exists() else None
 
     def init_llm_client(self):
-        """Initializes default Gemini API client if key is available in environment."""
+        """Initializes default Gemini API client if key is available in environment or Streamlit Cloud secrets."""
         self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
+        
+        # Check Streamlit Cloud secrets
+        if not self.api_key:
+            try:
+                import streamlit as st
+                if hasattr(st, "secrets"):
+                    self.api_key = (
+                        st.secrets.get("GEMINI_API_KEY") or 
+                        st.secrets.get("GOOGLE_API_KEY") or 
+                        st.secrets.get("OPENAI_API_KEY")
+                    )
+            except Exception:
+                pass
+
         self.llm_model = None
         if HAS_GENAI and self.api_key:
             try:

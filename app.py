@@ -234,7 +234,10 @@ custom_model = st.sidebar.text_input("Model Name", value="gemini-1.5-flash" if "
 
 # Pass custom settings down to the assistant agent
 provider_str = "openai" if "OpenAI" in provider_choice else "gemini"
-agent.set_custom_api_config(api_key=custom_key if custom_key else None, provider=provider_str, model_name=custom_model)
+if hasattr(agent, "set_custom_api_config"):
+    agent.set_custom_api_config(api_key=custom_key if custom_key else None, provider=provider_str, model_name=custom_model)
+elif hasattr(agent, "agentic_engine") and hasattr(agent.agentic_engine, "set_custom_api_config"):
+    agent.agentic_engine.set_custom_api_config(api_key=custom_key if custom_key else None, provider=provider_str, model_name=custom_model)
 
 # ==========================================
 # HEADER & TOP KPIS
